@@ -17,7 +17,7 @@ class TermSerial:
         self.buffer = [' ' for _ in xrange(rows * cols)]
         self.mode = 0
         self.chars = ''
-        self.sgr = 0;
+        self.sgr = 0
         self.sgr_line = [0 for _ in xrange(rows)]
         self.keep_running = True
 
@@ -30,7 +30,7 @@ class TermSerial:
         self.buffer = [' ' for _ in xrange(self.rows * self.cols)]
         self.mode = 0
         self.chars = ''
-        self.sgr = 0;
+        self.sgr = 0
         self.sgr_line = [0 for _ in xrange(self.rows)]
         self.keep_running = True
 
