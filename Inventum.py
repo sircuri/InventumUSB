@@ -1,17 +1,28 @@
 from __future__ import print_function
+from enum import Enum
 import time
 
 import TermSerial as Serial
 
 
+class State(Enum):
+    LOGIN = 1
+    CHALLENGE = 2
+    EXTRA_MENU = 3
+    IO_STATUS = 4
+
+
 class Inventum:
+
+    LOGIN_CODE = '3845'  # Seems to be working for most Inventum Ecolution devices
+    PIN_CODE = '19'
 
     def __init__(self, ):
         self.termser = Serial.TermSerial('/dev/ttyACM0')
-        self.menu = -1
         self.last_menu_selected = 0
         self.menu_timeout = 0
         self.last_selected_menu_item = ''
+        self.state = State.LOGIN
 
     @staticmethod
     def millis():
@@ -20,15 +31,9 @@ class Inventum:
     def reset_menu(self):
         self.termser.key_escape()
         self.termser.key_escape()
-        self.menu = -1
         self.last_menu_selected = 0
         self.menu_timeout = 0
         self.last_selected_menu_item = ''
-
-    def select_io_row(self, menu_item):
-        if self.last_menu_selected < menu_item:
-            self.termser.key_down()
-            self.last_menu_selected = self.last_menu_selected + 1
 
     def start(self):
         self.termser.reset()
@@ -40,18 +45,18 @@ class Inventum:
 
             line = self.termser.current_row()
             if line.find('Voer code in') != -1:
-                print('We need to enter code')
-                self.termser.writeln('3845')
+                self.state = State.LOGIN
+                self.termser.writeln(self.LOGIN_CODE)
             elif line.find('Voer beveiligingscode in') != -1:
-                print('We need to enter security code')
-                self.termser.writeln('19')
+                self.state = State.CHALLENGE
+                self.termser.writeln(self.PIN_CODE)
             elif self.termser.get_row(2).find(" EXTRAMENU") != -1:
-                print('We are logged in!')
-                self.menu = 0
+                self.state = State.EXTRA_MENU
+
                 self.termser.write('6')
                 self.menu_timeout = self.millis()
             elif self.termser.get_row(1).find("IO status") != -1:
-                self.menu = 6
+                self.state = State.IO_STATUS
 
                 selected_row = self.termser.selected_row().strip()
                 if selected_row != self.last_selected_menu_item:
