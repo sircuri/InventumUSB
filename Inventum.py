@@ -59,18 +59,17 @@ class Inventum:
                 self.state = State.IO_STATUS
 
                 selected_row = self.termser.selected_row().strip()
-                if selected_row != self.last_selected_menu_item:
+                if selected_row != '' and selected_row != self.last_selected_menu_item:
 
-                    if selected_row != '':
-                        print(selected_row)
-                        selected_menu = int(selected_row[1:3])
-                        if selected_menu < 17:
-                            self.termser.key_down()
-                        elif selected_menu > 17:
-                            self.termser.key_up()
-                        else:
-                            print ("Joy... found the menu item")
-                            self.termser.key_enter()
+                    print(selected_row)
+                    selected_menu = int(selected_row[1:3])
+                    if selected_menu < 17:
+                        self.termser.key_down()
+                    elif selected_menu > 17:
+                        self.termser.key_up()
+                    else:
+                        print ("Joy... found the menu item")
+                        self.termser.key_enter()
 
                     self.last_selected_menu_item = selected_row
 
