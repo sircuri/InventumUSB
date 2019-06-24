@@ -7,6 +7,7 @@ Special thanks to [Stefan1975](https://tweakers.net/gallery/227200) for doing th
 
 * pySerial
 * enum
+* configparser
 
 ## Device information
 
