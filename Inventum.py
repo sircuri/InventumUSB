@@ -46,6 +46,7 @@ class Inventum:
             time.sleep(0.1)
 
             line = self.termser.current_row()
+            self.log.debug('LINE: %s', line)
             if line.find('Voer code in') != -1:
                 self.state = State.LOGIN
                 self.log.debug('LOGIN: Entered %s', self.LOGIN_CODE)
