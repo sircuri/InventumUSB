@@ -55,5 +55,5 @@ if not isinstance(numeric_level, int):
 logging_setup(numeric_level, logfile)
 logger = logging.getLogger('main')
 
-inventum = Inventum.Inventum()
+inventum = Inventum.Inventum(logger)
 inventum.start()

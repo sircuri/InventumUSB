@@ -1,6 +1,7 @@
 from __future__ import print_function
 from enum import Enum
 import time
+import logging
 
 import TermSerial as Serial
 
@@ -17,7 +18,8 @@ class Inventum:
     LOGIN_CODE = '3845'  # Seems to be working for most Inventum Ecolution devices
     PIN_CODE = '19'
 
-    def __init__(self, ):
+    def __init__(self, logger):
+        self.log = logger
         self.termser = Serial.TermSerial('/dev/ttyACM0')
         self.last_menu_selected = 0
         self.menu_timeout = 0
@@ -46,9 +48,11 @@ class Inventum:
             line = self.termser.current_row()
             if line.find('Voer code in') != -1:
                 self.state = State.LOGIN
+                self.log.debug('LOGIN: Entered %s', self.LOGIN_CODE)
                 self.termser.writeln(self.LOGIN_CODE)
             elif line.find('Voer beveiligingscode in') != -1:
                 self.state = State.CHALLENGE
+                self.log.debug('LOGIN: Entered pincode %s', self.PIN_CODE)
                 self.termser.writeln(self.PIN_CODE)
             elif self.termser.get_row(2).find(" EXTRAMENU") != -1:
                 self.state = State.EXTRA_MENU
