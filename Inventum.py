@@ -6,10 +6,17 @@ import TermSerial as Serial
 
 class Inventum:
 
-    LOGIN = 1
-    CHALLENGE = 2
-    EXTRA_MENU = 3
-    IO_STATUS = 4
+    STATE_LOGIN = 1
+    STATE_CHALLENGE = 2
+    STATE_EXTRA_MENU = 3
+    STATE_IO_STATUS = 4
+
+    CMD_HIGH_FAN = 1
+    CMD_AUTO_FAN = 2
+
+    MENU_PARAMETERS = '6'
+
+    MENU_IO_FAN = 17
 
     LOGIN_CODE = '3845'  # Seems to be working for most Inventum Ecolution devices
     PIN_CODE = '19'
@@ -20,7 +27,9 @@ class Inventum:
         self.last_menu_selected = 0
         self.menu_timeout = 0
         self.last_selected_menu_item = ''
-        self.state = self.LOGIN
+        self.state = self.STATE_LOGIN
+
+        self.active_command = self.CMD_AUTO_FAN
 
         self.last_line_debug = ''
 
@@ -34,6 +43,30 @@ class Inventum:
         self.last_menu_selected = 0
         self.menu_timeout = 0
         self.last_selected_menu_item = ''
+
+        self.active_command = self.CMD_AUTO_FAN
+
+    def cmd_to_menu(self):
+        if self.active_command == self.CMD_AUTO_FAN or self.active_command == self.CMD_HIGH_FAN:
+            return self.MENU_IO_FAN
+
+        return -1
+
+    def handle_menu(self):
+        if self.active_command == self.CMD_AUTO_FAN:
+            self.set_fan_auto()
+        elif self.active_command == self.CMD_HIGH_FAN:
+            self.set_fan_high()
+
+    def set_fan_high(self):
+        if self.termser.get_row(51).find('   3-standen :') != -1:
+            print('Yep, SET a new value for this parameter')
+            self.reset_menu()
+
+    def set_fan_auto(self):
+        if self.termser.get_row(51).find('   3-standen :') != -1:
+            print('Yep, RESET value for this parameter')
+            self.reset_menu()
 
     def start(self):
         self.termser.reset()
@@ -50,43 +83,44 @@ class Inventum:
                 self.last_line_debug = line
 
             if line.find('Voer code in') != -1:
-                self.state = self.LOGIN
+                self.state = self.STATE_LOGIN
                 self.log.info('LOGIN: Entered %s', self.LOGIN_CODE)
                 self.termser.writeln(self.LOGIN_CODE)
             elif line.find('Voer beveiligingscode in') != -1:
-                self.state = self.CHALLENGE
+                self.state = self.STATE_CHALLENGE
                 self.log.info('LOGIN: Entered pincode %s', self.PIN_CODE)
                 self.termser.writeln(self.PIN_CODE)
             elif self.termser.get_row(2).find(" EXTRAMENU") != -1:
-                self.state = self.EXTRA_MENU
+                self.state = self.STATE_EXTRA_MENU
                 self.log.info('We are in the main menu')
 
-                self.termser.write('6')
+                self.termser.write(self.MENU_PARAMETERS)
                 self.menu_timeout = self.millis()
             elif self.termser.get_row(1).find("IO status") != -1:
-                self.state = self.IO_STATUS
+                self.state = self.STATE_IO_STATUS
 
                 selected_row = self.termser.selected_row().strip()
                 if selected_row != self.last_selected_menu_item:
-
                     if selected_row != '':
 
-                        print(selected_row)
                         selected_menu = int(selected_row[1:3])
-                        if selected_menu < 17:
-                            self.termser.key_down()
-                        elif selected_menu > 17:
-                            self.termser.key_up()
-                        else:
-                            print ("Joy... found the menu item")
-                            self.termser.key_enter()
+                        self.log.debug('MAINMENU: Active menu item "%d"', selected_menu)
+
+                        goto_menu = self.cmd_to_menu()
+                        if goto_menu != -1:
+
+                            if selected_menu < goto_menu:
+                                self.termser.key_down()
+                            elif selected_menu > goto_menu:
+                                self.termser.key_up()
+                            else:
+                                self.termser.key_enter()
 
                     self.last_selected_menu_item = selected_row
-
-            elif self.termser.get_row(51).find('   3-standen :') != -1:
-                print('Yep, enter a new value for this parameter')
-                self.reset_menu()
-            elif self.state > self.EXTRA_MENU and self.millis() - self.menu_timeout > 5000:  # wait 5 seconds, and reset to main menu
+            elif self.state == self.STATE_IO_STATUS:
+                self.handle_menu()
+            # wait 5 seconds, and reset to main menu
+            elif self.state > self.STATE_EXTRA_MENU and self.millis() - self.menu_timeout > 5000:
                 self.reset_menu()
 
         self.termser.close()
