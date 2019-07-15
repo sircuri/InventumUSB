@@ -5,6 +5,8 @@ import configparser
 import os
 import gzip
 import sys
+import json
+import paho.mqtt.client as mqtt
 from logging.handlers import TimedRotatingFileHandler
 
 
@@ -37,12 +39,36 @@ def logging_setup(level, log_file):
     mainlogger.setLevel(level)
 
 
+def on_message(client, userdata, message):
+    payload = str(message.payload.decode("utf-8"))
+    logger.info('Received command: %s', payload)
+
+    if payload == 'FAN_HIGH':
+        inventum.set_command_fan_high()
+    elif payload == 'FAN_AUTO':
+        inventum.set_command_fan_auto()
+    elif payload == 'DATA_START':
+        inventum.set_command_data_start()
+    elif payload == 'DATA_STOP':
+        inventum.set_command_data_stop()
+    elif payload == 'KILL':
+        inventum.interrupt()
+    else:
+        logger.error('Unknown command received: %s', payload)
+
+
+def on_data(data):
+    json_data = json.dumps(data)
+    logger.debug('DATA[%s]', json_data)
+    client.publish("ventilation/inventum/data", json_data)
+
+
 config = configparser.RawConfigParser()
 config.read('inventumusb.conf')
 
 mqttserver = config.get("mqtt", "server", fallback="localhost")
 mqttport = config.getint("mqtt", "port", fallback=1883)
-mqtttopic = config.get("mqtt", "topic", fallback="goodwe")
+mqtttopic = config.get("mqtt", "topic", fallback="ventilation/inventum/commands")
 mqttclientid = config.get("mqtt", "clientid", fallback="inventum-usb")
 
 loglevel = config.get("inventum", "loglevel", fallback="INFO")
@@ -55,5 +81,18 @@ if not isinstance(numeric_level, int):
 logging_setup(numeric_level, logfile)
 logger = logging.getLogger('main')
 
+try:
+    client = mqtt.Client(mqttclientid)
+    # if mqttusername != "":
+    #     client.username_pw_set(mqttusername, mqttpasswd);
+    #     logging.debug("Set username -%s-, password -%s-", mqttusername, mqttpasswd)
+    client.connect(mqttserver, port=mqttport)
+    client.on_message = on_message
+    client.subscribe(mqtttopic)
+    client.loop_start()
+except Exception as e:
+    logging.error("%s:%s: %s", mqttserver, mqttport, e)
+
 inventum = Inventum.Inventum(logger)
+inventum.on_data = on_data
 inventum.start()

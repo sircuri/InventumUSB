@@ -1,7 +1,8 @@
 from __future__ import print_function
+
 import serial
 import sys
-
+import time
 
 class TermSerial:
     ESC = b'\033'
@@ -14,7 +15,7 @@ class TermSerial:
         self.col = 0
         self.rows = rows
         self.cols = cols
-        self.buffer = [' ' for _ in xrange(rows * cols)]
+        self.buffer = [b' ' for _ in xrange(rows * cols)]
         self.mode = 0
         self.chars = ''
         self.sgr = 0
@@ -27,7 +28,7 @@ class TermSerial:
 
         self.row = 0
         self.col = 0
-        self.buffer = [' ' for _ in xrange(self.rows * self.cols)]
+        self.buffer = [b' ' for _ in xrange(self.rows * self.cols)]
         self.mode = 0
         self.chars = ''
         self.sgr = 0
@@ -36,13 +37,31 @@ class TermSerial:
 
     def interrupt(self):
         self.keep_running = False
+        self.key_escape()
+        self.key_escape()
+        time.sleep(4)
+        self.reset()
 
-    def dump(self):
-        for row in xrange(self.rows):
-            print(str(self.sgr_line[row]) + '~' + str(row + 1).rjust(2) + ': ' + ''.join(
-                self.buffer[row * self.cols: (row + 1) * self.cols - 1]))
-            if row == self.row:
-                print('      ' + ''.join([' ' for _ in xrange(self.col)]) + '^')
+    # def dump(self):
+    #     for row in xrange(self.rows):
+    #         print(str(self.sgr_line[row]) + '~' + str(row + 1).rjust(2) + ': ' + ''.join(
+    #             self.buffer[row * self.cols: (row + 1) * self.cols - 1]))
+    #         if row == self.row:
+    #             print('      ' + ''.join([' ' for _ in xrange(self.col)]) + '^')
+
+    def set_raw_mode(self):
+        self.mode = -1
+
+    def has_raw_data(self):
+        return len(self.buffer) > 0
+
+    def get_raw_data(self):
+        data = self.buffer
+        self.buffer = []
+        return data
+
+    def set_normal_mode(self):
+        self.reset()
 
     def has_bytes_waiting(self):
         return self.serial.inWaiting() > 0
@@ -113,7 +132,7 @@ class TermSerial:
     def get_row(self, row):
         start = self.coord_to_idx(row, 1)
         end = start + self.cols - 1
-        return ''.join(self.buffer[start:end])
+        return b''.join(self.buffer[start:end])
 
     def current_row(self):
         return self.get_row(self.row + 1)
@@ -126,53 +145,56 @@ class TermSerial:
 
         if self.has_bytes_waiting():
             chrs = self.read()
-            for c in chrs:
-                try:
-                    if c == self.ESC:
-                        if self.mode > 0:
-                            # That is strange, reset and move on to next char
-                            self.reset()
-                            continue
-                        self.mode = 1
-                    elif c == self.CSI and self.mode == 1:
-                        self.mode = 2
-                    elif self.mode == 2:
-                        # we are in escape mode. Handle commands
-                        if c == b'J':
-                            if len(self.chars) > 0:
-                                self.clear_screen(True)
-                                self.set_cursor(1, 1)
+            if self.mode == -1:
+                self.buffer += list(chrs)
+            else:
+                for c in chrs:
+                    try:
+                        if c == self.ESC:
+                            if self.mode > 0:
+                                # That is strange, reset and move on to next char
+                                self.reset()
+                                continue
+                            self.mode = 1
+                        elif c == self.CSI and self.mode == 1:
+                            self.mode = 2
+                        elif self.mode == 2:
+                            # we are in escape mode. Handle commands
+                            if c == b'J':
+                                if len(self.chars) > 0:
+                                    self.clear_screen(True)
+                                    self.set_cursor(1, 1)
+                                    self.chars = ''
+                                else:
+                                    self.clear_screen(False)
+                                self.mode = 0
+                            elif c == b'K':
+                                self.clear_line()
+                                self.mode = 0
+                            elif c == b'm' or c == b'M':
+                                if len(self.chars) > 0:
+                                    self.sgr = int(self.chars)
+                                else:
+                                    self.sgr = 0
                                 self.chars = ''
-                            else:
-                                self.clear_screen(False)
-                            self.mode = 0
-                        elif c == b'K':
-                            self.clear_line()
-                            self.mode = 0
-                        elif c == b'm' or c == b'M':
-                            if len(self.chars) > 0:
-                                self.sgr = int(self.chars)
-                            else:
-                                self.sgr = 0
-                            self.chars = ''
-                            self.mode = 0
-                        elif c == b'H':
-                            pos = self.chars.split(';')
-                            self.set_cursor(int(pos[0]), int(pos[1]))
-                            self.chars = ''
-                            self.mode = 0
-                        elif c in '0123456789;':
-                            self.chars += c
-                        continue
-                    elif c == b'\r':
-                        self.cr()
-                    elif c == b'\n':
-                        self.nl()
-                    else:
-                        self.set_char(c)
-                except:
-                    print("Error: ", sys.exc_info())
-                    self.reset()
+                                self.mode = 0
+                            elif c == b'H':
+                                pos = self.chars.split(';')
+                                self.set_cursor(int(pos[0]), int(pos[1]))
+                                self.chars = ''
+                                self.mode = 0
+                            elif c in '0123456789;':
+                                self.chars += c
+                            continue
+                        elif c == b'\r':
+                            self.cr()
+                        elif c == b'\n':
+                            self.nl()
+                        else:
+                            self.set_char(c)
+                    except:
+                        print("Error: ", sys.exc_info())
+                        self.reset()
 
         return self.keep_running
 
