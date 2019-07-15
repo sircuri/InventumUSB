@@ -40,13 +40,13 @@ def logging_setup(level, log_file):
 config = configparser.RawConfigParser()
 config.read('inventumusb.conf')
 
-mqttserver = config.get("mqtt", "server")
-mqttport = config.get("mqtt", "port")
-mqtttopic = config.get("mqtt", "topic")
-mqttclientid = config.get("mqtt", "clientid")
+mqttserver = config.get("mqtt", "server", fallback="localhost")
+mqttport = config.getint("mqtt", "port", fallback=1883)
+mqtttopic = config.get("mqtt", "topic", fallback="goodwe")
+mqttclientid = config.get("mqtt", "clientid", fallback="inventum-usb")
 
-loglevel = config.get("inventum", "loglevel")
-logfile = config.get("inventum", "logfile")
+loglevel = config.get("inventum", "loglevel", fallback="INFO")
+logfile = config.get("inventum", "logfile", fallback="/var/log/inventum.log")
 
 numeric_level = getattr(logging, loglevel.upper(), None)
 if not isinstance(numeric_level, int):
