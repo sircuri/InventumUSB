@@ -4,6 +4,7 @@ import serial
 import sys
 import time
 
+
 class TermSerial:
     ESC = b'\033'
     CSI = b'['
