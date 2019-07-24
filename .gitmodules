@@ -1,0 +1,3 @@
+[submodule "daemonpy"]
+	path = daemonpy
+	url = ../DaemonPy.git
