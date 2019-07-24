@@ -66,8 +66,8 @@ class InventumProcessor(object):
 
     def on_data(self, data):
         json_data = json.dumps(data)
-        self.mainlogger.debug('DATA[%s]', json_data)
         combinedtopic = self.mqtttopic + '/data'
+        self.mainlogger.debug('Publishing data to MQTT on channel %s', combinedtopic)
         self.client.publish(combinedtopic, json_data)
 
     def run_process(self):
@@ -83,6 +83,7 @@ class InventumProcessor(object):
 
         loglevel = config.get("inventum", "loglevel", fallback="INFO")
         logfile = config.get("inventum", "logfile", fallback="/var/log/inventum.log")
+        device = config.get("inventum", "device", fallback="/dev/ttyACM0")
 
         numeric_level = getattr(logging, loglevel.upper(), None)
         if not isinstance(numeric_level, int):
@@ -96,16 +97,16 @@ class InventumProcessor(object):
                 self.client.username_pw_set(mqttusername, mqttpasswd);
                 self.mainlogger.debug("Set username -%s-, password -%s-", mqttusername, mqttpasswd)
             self.client.connect(mqttserver, port=mqttport)
+            self.mainlogger.info('Connected to MQTT %s:%s', mqttserver, mqttport)
             self.client.on_message = self.on_message
+            self.mainlogger.info('Waiting for commands on MQTT channel %s/commands', self.mqtttopic)
             self.client.subscribe(self.mqtttopic + '/commands')
             self.client.loop_start()
         except Exception as e:
             self.mainlogger.error("%s:%s: %s", mqttserver, mqttport, e)
             return 3
 
-        self.mainlogger.info('Connected to MQTT %s:%s', mqttserver, mqttport)
-
-        self.inventum = Inventum.Inventum(self.mainlogger)
+        self.inventum = Inventum.Inventum(self.mainlogger, device)
         self.inventum.on_data = self.on_data
         self.inventum.start()
 

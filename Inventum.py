@@ -32,9 +32,9 @@ class Inventum:
     LOGIN_CODE = '3845'  # Seems to be working for most Inventum Ecolution devices
     PIN_CODE = '19'
 
-    def __init__(self, logger):
+    def __init__(self, logger, device):
         self.log = logger
-        self.termser = Serial.TermSerial('/dev/ttyACM0')
+        self.termser = Serial.TermSerial(device)
         self.last_menu_selected = 0
         self.menu_timeout = 0
         self.last_selected_menu_item = ''
@@ -138,6 +138,7 @@ class Inventum:
                         "status": entries[(i*2)]
                     }
 
+                self.log.debug('DATA[%s]', str(log_entries))
                 if self.on_data:
                     self.on_data(log_entries)
 
@@ -200,7 +201,7 @@ class Inventum:
                 elif self.termser.get_row(2).find(" EXTRAMENU") != -1:
                     if self.state != self.STATE_EXTRA_MENU:
                         self.state = self.STATE_EXTRA_MENU
-                        self.log.info('We are in the main menu')
+                        self.log.info('Login succesfull')
 
                     goto_mainmenu = self.cmd_to_mainmenu()
                     if goto_mainmenu != '-1':
@@ -208,7 +209,9 @@ class Inventum:
                         self.menu_timeout = self.millis()
 
                 elif self.termser.get_row(1).find("IO status") != -1:
-                    self.state = self.STATE_IO_STATUS
+                    if self.state != self.STATE_IO_STATUS:
+                        self.state = self.STATE_IO_STATUS
+                        self.log.info('Activated IO Status menu')
 
                     selected_row = self.termser.selected_row().strip()
                     if selected_row != self.last_selected_menu_item:
