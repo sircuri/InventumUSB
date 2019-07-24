@@ -61,6 +61,7 @@ class Inventum:
 
     def reset_menu(self):
         self.termser.key_escape()
+        time.sleep(1)
         self.termser.key_escape()
         self.last_menu_selected = 0
         self.menu_timeout = 0
@@ -145,12 +146,13 @@ class Inventum:
     def set_fan_high(self):
         print(self.termser.get_row(51))
         if self.termser.get_row(51).find('   3-standen :') != -1:
-            self.log.info('Yep, SET a new value for this parameter')
+            self.log.info("Set value for parameter '3-standen' to: 3")
+            self.termser.writeln('3')
             self.reset_menu()
 
     def set_fan_auto(self):
         if self.termser.get_row(51).find('   3-standen :') != -1:
-            self.log.info('Yep, RESET value for this parameter')
+            self.log.info("RESET value for parameter '3-standen'")
             self.reset_menu()
 
     def set_command_fan_high(self):
