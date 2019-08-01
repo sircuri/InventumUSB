@@ -8,26 +8,25 @@ class Inventum:
 
     STATE_IDLE = 0
     STATE_LOGIN = 1
-    STATE_CHALLENGE = 2
-    STATE_EXTRA_MENU = 3
-    STATE_IO_STATUS = 4
-    STATE_DATALOGGER = 5
-
-    CMD_NONE = 1
+    STATE_LOGIN_CODE_ENTERED = 2
+    STATE_CHALLENGE = 3
+    STATE_CHALLENGE_ENTERED = 4
+    STATE_EXTRA_MENU = 5
+    STATE_EXTRA_MENU_SELECTED = 6
+    STATE_IO_STATUS = 7
+    STATE_DATALOGGER = 8
+    STATE_DATALOGGER_EXITED = 9
+    STATE_IO_CHANGE_FAN = 10
+    STATE_CMD_FAN_HIGH = 11
+    STATE_CMD_FAN_RESET = 12
 
     MODE_TERM = 1
     MODE_BULK = 2
 
-    MENU_PARAMETERS = '6'
+    MENU_IO = '6'
     MENU_IO_FAN = 17
-    CMD_IO_HIGH_FAN = 61
-    CMD_IO_AUTO_FAN = 62
 
     MENU_DATALOGGER = '9'
-    CMD_DATA_START = 91
-    CMD_DATA_STOP = 92
-
-    DEFAULT_CMD = CMD_DATA_START
 
     LOGIN_CODE = '3845'  # Seems to be working for most Inventum Ecolution devices
     PIN_CODE = '19'
@@ -35,17 +34,29 @@ class Inventum:
     def __init__(self, logger, device):
         self.log = logger
         self.termser = Serial.TermSerial(device)
-        self.last_menu_selected = 0
-        self.menu_timeout = 0
+        self.datalogger_start = 0
+        self.last_seen = self.millis()
         self.last_selected_menu_item = ''
-        self.state = self.STATE_IDLE
         self.mode = self.MODE_TERM
-        self.active_command = self.DEFAULT_CMD
         self.datalogger_header = []
         self.datalogger_buffer = []
         self.last_line_debug = ''
 
+        self._current_state = self.STATE_IDLE
+        self.target_state = self.STATE_DATALOGGER
+
         self._on_data = None
+
+    def __reset__(self):
+        self.datalogger_start = 0
+        self.last_seen = self.millis()
+        self.last_selected_menu_item = ''
+        self.mode = self.MODE_TERM
+        self.datalogger_header = []
+        self.datalogger_buffer = []
+        self.last_line_debug = ''
+        self._current_state = self.STATE_IDLE
+        self.target_state = self.STATE_DATALOGGER
 
     @staticmethod
     def millis():
@@ -59,50 +70,82 @@ class Inventum:
     def on_data(self, func):
         self._on_data = func
 
-    def reset_menu(self):
-        self.termser.key_escape()
-        time.sleep(1)
-        self.termser.key_escape()
-        self.last_menu_selected = 0
-        self.menu_timeout = 0
-        self.last_selected_menu_item = ''
-        self.state = self.STATE_IDLE
-        self.mode = self.MODE_TERM
-        self.datalogger_header = []
+
+    def interrupt(self):
+        self.termser.interrupt()
+
+    def set_command_fan_high(self):
+        self.set_target_state(self.STATE_CMD_FAN_HIGH)
+
+    def set_command_fan_auto(self):
+        self.set_target_state(self.STATE_CMD_FAN_RESET)
+
+    def set_command_data_start(self):
+        self.set_target_state(self.STATE_DATALOGGER)
+
+    def set_command_data_stop(self):
+        self.set_target_state(self.STATE_EXTRA_MENU)
+
+    def __workflow_enter_login_code(self):
+        self.log.info('LOGIN: Entered %s', self.LOGIN_CODE)
+        self.termser.writeln(self.LOGIN_CODE)
+        self._current_state = self.STATE_LOGIN_CODE_ENTERED
+
+    def __workflow_enter_pincode(self):
+        self.log.info('LOGIN: Entered pincode %s', self.PIN_CODE)
+        self.termser.writeln(self.PIN_CODE)
+        self._current_state = self.STATE_CHALLENGE_ENTERED
+
+    def __workflow_goto_io_menu(self):
+        self.termser.write(self.MENU_IO)
+        self._current_state = self.STATE_EXTRA_MENU_SELECTED
+
+    def __workflow_goto_datalogger(self):
+        self.termser.write(self.MENU_DATALOGGER)
+        self._current_state = self.STATE_DATALOGGER
+        self.mode = self.MODE_BULK
+        self.termser.set_raw_mode()
+        self.datalogger_header = None
         self.datalogger_buffer = []
-        self.active_command = self.DEFAULT_CMD
+        self.datalogger_start = self.millis()
 
-    def cmd_to_mainmenu(self):
-        if self.active_command == self.CMD_IO_AUTO_FAN or self.active_command == self.CMD_IO_HIGH_FAN:
-            return self.MENU_PARAMETERS
-        if self.active_command == self.CMD_DATA_START:
-            self.state = self.STATE_DATALOGGER
-            self.mode = self.MODE_BULK
-            self.termser.set_raw_mode()
-            self.datalogger_header = None
-            self.datalogger_buffer = []
-            return self.MENU_DATALOGGER
+    def __workflow_io_select_fan(self):
+        selected_row = self.termser.selected_row().strip()
+        if selected_row != '' and selected_row != self.last_selected_menu_item:
+            # /hack for now. Need to figure out this time out sequence
+            self.last_seen = self.millis()
+            # /endhack
 
-        return '-1'
+            selected_menu = int(selected_row[1:3])
+            self.log.debug('IO Status: Active menu item "%d"', selected_menu)
 
-    def cmd_to_menu(self):
-        if self.active_command == self.CMD_IO_AUTO_FAN or self.active_command == self.CMD_IO_HIGH_FAN:
-            return self.MENU_IO_FAN
+            if selected_menu < self.MENU_IO_FAN:
+                self.termser.key_down()
+            elif selected_menu > self.MENU_IO_FAN:
+                self.termser.key_up()
+            else:
+                self.termser.key_enter()
 
-        return -1
+            self.last_selected_menu_item = selected_row
 
-    def handle_menu(self):
-        if self.active_command == self.CMD_IO_AUTO_FAN:
-            self.set_fan_auto()
-        elif self.active_command == self.CMD_IO_HIGH_FAN:
-            self.set_fan_high()
+    def __workflow_io_set_fan_high(self):
+        self.log.info("SET value for parameter '3-standen' to: 3")
+        self.termser.writeln('3')
+        self._current_state = self.STATE_IDLE
+        self.set_target_state(self.STATE_EXTRA_MENU)
 
-    def should_wait(self, wait):
-        return self.millis() - self.menu_timeout <= (wait * 1000)
+    def __workflow_io_set_fan_auto(self):
+        self.log.info("RESET value for parameter '3-standen'")
+        self.termser.key_escape()
+        self._current_state = self.STATE_IDLE
+        self.set_target_state(self.STATE_EXTRA_MENU)
 
-    def handle_datalogger(self):
+    def __should_wait(self, wait):
+        return self.millis() - self.datalogger_start <= (wait * 1000)
 
-        if self.should_wait(2):
+    def __workflow_datalogger_read(self):
+
+        if self.__should_wait(2):
             return
 
         if self.termser.has_raw_data():
@@ -143,38 +186,50 @@ class Inventum:
                 if self.on_data:
                     self.on_data(log_entries)
 
-    def set_fan_high(self):
-        print(self.termser.get_row(51))
-        if self.termser.get_row(51).find('   3-standen :') != -1:
-            self.log.info("Set value for parameter '3-standen' to: 3")
-            self.termser.writeln('3')
-            self.reset_menu()
-
-    def set_fan_auto(self):
-        if self.termser.get_row(51).find('   3-standen :') != -1:
-            self.log.info("RESET value for parameter '3-standen'")
-            self.reset_menu()
-
-    def set_command_fan_high(self):
+    def __workflow_exit_datalogger(self):
         self.termser.set_normal_mode()
-        self.reset_menu()
-        self.active_command = self.CMD_IO_HIGH_FAN
+        self.termser.key_escape()
+        self.mode = self.MODE_TERM
+        self.datalogger_header = []
+        self.datalogger_buffer = []
+        self._current_state = self.STATE_DATALOGGER_EXITED
 
-    def set_command_fan_auto(self):
-        self.termser.set_normal_mode()
-        self.reset_menu()
-        self.active_command = self.CMD_IO_AUTO_FAN
+    def __workflow_io_previous_menu(self):
+        self.termser.key_escape()
+        self._current_state = self.STATE_IDLE
 
-    def set_command_data_start(self):
-        self.active_command = self.CMD_DATA_START
+    def set_target_state(self, state):
+        self.target_state = state
+        self.last_seen = self.millis()
 
-    def set_command_data_stop(self):
-        self.active_command = self.CMD_DATA_STOP
-        self.termser.set_normal_mode()
-        self.reset_menu()
+    def handle_workflow(self):
 
-    def interrupt(self):
-        self.termser.interrupt()
+        if self._current_state == self.STATE_LOGIN:
+            self.__workflow_enter_login_code()
+        elif self._current_state == self.STATE_CHALLENGE:
+            self.__workflow_enter_pincode()
+        elif self._current_state == self.STATE_EXTRA_MENU:
+            if self.target_state == self.STATE_CMD_FAN_HIGH or self.target_state == self.STATE_CMD_FAN_RESET:
+                self.__workflow_goto_io_menu()
+            elif self.target_state == self.STATE_DATALOGGER:
+                self.__workflow_goto_datalogger()
+        elif self._current_state == self.STATE_IO_STATUS:
+            if self.target_state == self.STATE_CMD_FAN_HIGH or self.target_state == self.STATE_CMD_FAN_RESET:
+                self.__workflow_io_select_fan()
+            elif self.target_state == self.STATE_EXTRA_MENU:
+                self.__workflow_io_previous_menu()
+        elif self._current_state == self.STATE_IO_CHANGE_FAN:
+            if self.target_state == self.STATE_CMD_FAN_HIGH:
+                self.__workflow_io_set_fan_high()
+            elif self.target_state == self.STATE_CMD_FAN_RESET:
+                self.__workflow_io_set_fan_auto()
+        elif self._current_state == self.STATE_DATALOGGER:
+            if self.target_state == self.STATE_CMD_FAN_HIGH or self.target_state == self.STATE_CMD_FAN_RESET:
+                self.__workflow_exit_datalogger()
+            elif self.target_state == self.STATE_EXTRA_MENU:
+                self.__workflow_exit_datalogger()
+            elif self.target_state == self.STATE_DATALOGGER:
+                self.__workflow_datalogger_read()
 
     def start(self):
         self.termser.reset()
@@ -193,54 +248,29 @@ class Inventum:
                     self.last_line_debug = line
 
                 if line.find('Voer code in') != -1:
-                    self.state = self.STATE_LOGIN
-                    self.log.info('LOGIN: Entered %s', self.LOGIN_CODE)
-                    self.termser.writeln(self.LOGIN_CODE)
+                    self._current_state = self.STATE_LOGIN
+
                 elif line.find('Voer beveiligingscode in') != -1:
-                    self.state = self.STATE_CHALLENGE
-                    self.log.info('LOGIN: Entered pincode %s', self.PIN_CODE)
-                    self.termser.writeln(self.PIN_CODE)
-                elif self.termser.get_row(2).find(" EXTRAMENU") != -1:
-                    if self.state != self.STATE_EXTRA_MENU:
-                        self.state = self.STATE_EXTRA_MENU
-                        self.log.info('Login succesfull')
+                    self._current_state = self.STATE_CHALLENGE
 
-                    goto_mainmenu = self.cmd_to_mainmenu()
-                    if goto_mainmenu != '-1':
-                        self.termser.write(goto_mainmenu)
-                        self.menu_timeout = self.millis()
+                elif self.termser.get_row(2).find(" EXTRAMENU") != -1 and self._current_state != self.STATE_EXTRA_MENU:
+                    self._current_state = self.STATE_EXTRA_MENU
+                    self.last_seen = self.millis()
+                    self.log.info('Login succesfull')
+                    self.log.debug('target state %d', self.target_state)
 
-                elif self.termser.get_row(1).find("IO status") != -1:
-                    if self.state != self.STATE_IO_STATUS:
-                        self.state = self.STATE_IO_STATUS
-                        self.log.info('Activated IO Status menu')
+                elif self.termser.get_row(1).find("IO status") != -1 and self._current_state != self.STATE_IO_STATUS:
+                    self._current_state = self.STATE_IO_STATUS
+                    self.log.info('Activated IO Status menu')
 
-                    selected_row = self.termser.selected_row().strip()
-                    if selected_row != self.last_selected_menu_item:
-                        if selected_row != '':
+                elif self.termser.get_row(51).find('   3-standen :') != -1:
+                    self._current_state = self.STATE_IO_CHANGE_FAN
+                    self.log.info('Selected "3-standen" menu item for change')
 
-                            selected_menu = int(selected_row[1:3])
-                            self.log.debug('MAINMENU: Active menu item "%d"', selected_menu)
-
-                            goto_menu = self.cmd_to_menu()
-                            if goto_menu != -1:
-
-                                if selected_menu < goto_menu:
-                                    self.termser.key_down()
-                                elif selected_menu > goto_menu:
-                                    self.termser.key_up()
-                                else:
-                                    self.termser.key_enter()
-
-                        self.last_selected_menu_item = selected_row
-                elif self.state == self.STATE_IO_STATUS:
-                    self.handle_menu()
                 # wait 5 seconds, and reset to main menu
-                elif self.state > self.STATE_EXTRA_MENU and self.millis() - self.menu_timeout > 5000:
-                    self.reset_menu()
+                elif self._current_state >= self.STATE_EXTRA_MENU and self.millis() - self.last_seen > 5000:
+                    self.__reset__()
 
-            else:
-                if self.state == self.STATE_DATALOGGER:
-                    self.handle_datalogger()
+            self.handle_workflow()
 
         self.termser.close()
