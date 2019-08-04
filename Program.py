@@ -9,12 +9,10 @@ import gzip
 import sys
 import json
 import paho.mqtt.client as mqtt
-from logging.handlers import TimedRotatingFileHandler
 
 
 class InventumProcessor(object):
     def __init__(self):
-        self.mainlogger = None
         self.client = None
         self.inventum = None
         self.mqtttopic = ''
@@ -31,25 +29,19 @@ class InventumProcessor(object):
                 df.write(data)
         os.remove(source)
 
-    def logging_setup(self, level, log_file):
-        formatter = logging.Formatter('%(asctime)-15s %(funcName)s(%(lineno)d) - %(levelname)s: %(message)s')
+    def logging_setup(self, level, log_file, foreground):
 
-        filehandler = logging.handlers.RotatingFileHandler(log_file, maxBytes=10 * 1024 * 1024, backupCount=5)
-        filehandler.setFormatter(formatter)
-
-        stdouthandler = logging.StreamHandler(sys.stdout)
-        stdouthandler.setFormatter(formatter)
-
-        self.mainlogger = logging.getLogger('main')
-        self.mainlogger.namer = InventumProcessor.logging_namer
-        self.mainlogger.rotator = InventumProcessor.logging_rotator
-        self.mainlogger.addHandler(filehandler)
-        self.mainlogger.addHandler(stdouthandler)
-        self.mainlogger.setLevel(level)
+        # If we are running in the foreground we use stderr for logging, if running as forking daemon we use the logfile
+        if foreground:
+            logging.basicConfig(format='%(asctime)-15s %(funcName)s(%(lineno)d) - %(levelname)s: %(message)s',
+                                stream=sys.stderr, level=level)
+        else:
+            logging.basicConfig(format='%(asctime)-15s %(funcName)s(%(lineno)d) - %(levelname)s: %(message)s',
+                                filename=log_file, level=level)
 
     def on_message(self, client, userdata, message):
         payload = str(message.payload.decode("utf-8"))
-        self.mainlogger.info('Received command: %s', payload)
+        logging.info('Received command: %s', payload)
 
         if payload == 'FAN=1':
             self.inventum.set_command_fan_high()
@@ -62,15 +54,15 @@ class InventumProcessor(object):
         elif payload == 'QUIT':
             self.inventum.interrupt()
         else:
-            self.mainlogger.error('Unknown command received: %s', payload)
+            logging.error('Unknown command received: %s', payload)
 
     def on_data(self, data):
         json_data = json.dumps(data)
         combinedtopic = self.mqtttopic + '/data'
-        self.mainlogger.debug('Publishing data to MQTT on channel %s', combinedtopic)
+        logging.debug('Publishing data to MQTT on channel %s', combinedtopic)
         self.client.publish(combinedtopic, json_data)
 
-    def run_process(self):
+    def run_process(self, foreground):
         config = configparser.RawConfigParser()
         config.read('/etc/inventumusb.conf')
 
@@ -89,24 +81,24 @@ class InventumProcessor(object):
         if not isinstance(numeric_level, int):
             raise ValueError('Invalid log level: %s' % loglevel)
 
-        self.logging_setup(numeric_level, logfile)
+        self.logging_setup(numeric_level, logfile, foreground)
 
         try:
             self.client = mqtt.Client(mqttclientid)
             if mqttusername != "":
                 self.client.username_pw_set(mqttusername, mqttpasswd);
-                self.mainlogger.debug("Set username -%s-, password -%s-", mqttusername, mqttpasswd)
+                logging.debug("Set username -%s-, password -%s-", mqttusername, mqttpasswd)
             self.client.connect(mqttserver, port=mqttport)
-            self.mainlogger.info('Connected to MQTT %s:%s', mqttserver, mqttport)
+            logging.info('Connected to MQTT %s:%s', mqttserver, mqttport)
             self.client.on_message = self.on_message
-            self.mainlogger.info('Waiting for commands on MQTT channel %s/commands', self.mqtttopic)
+            logging.info('Waiting for commands on MQTT channel %s/commands', self.mqtttopic)
             self.client.subscribe(self.mqtttopic + '/commands')
             self.client.loop_start()
         except Exception as e:
-            self.mainlogger.error("%s:%s: %s", mqttserver, mqttport, e)
+            logging.error("%s:%s: %s", mqttserver, mqttport, e)
             return 3
 
-        self.inventum = Inventum.Inventum(self.mainlogger, device)
+        self.inventum = Inventum.Inventum(logging, device)
         self.inventum.on_data = self.on_data
         self.inventum.start()
 
@@ -117,7 +109,7 @@ class InventumProcessor(object):
 class MyDaemon(Daemon):
     def run(self):
         _processor = InventumProcessor()
-        _processor.run_process()
+        _processor.run_process(foreground=False)
 
 
 if __name__ == "__main__":
@@ -127,7 +119,7 @@ if __name__ == "__main__":
 
     if 'foreground' == sys.argv[1]:
         processor = InventumProcessor()
-        ret_val = processor.run_process()
+        ret_val = processor.run_process(foreground=True)
         sys.exit(ret_val)
 
     daemon = MyDaemon('/var/run/inventum.pid', '/dev/null', '/dev/null', '/dev/null')
