@@ -34,7 +34,7 @@ sudo python -m pip install pySerial enum configparser paho-mqtt
 
 ## Config
 
-Create file _/etc/inventum.conf_:
+Create file _/etc/inventumusb.conf_:
 
 ```
 [inventum]
