@@ -1,0 +1,10 @@
+./.git
+./.gitignore
+./.gitmodules
+./.gitlab-ci.yml
+./.DS_Store
+./.vscode
+./ci
+./build
+./InventumUSB.code-workspace
+./out

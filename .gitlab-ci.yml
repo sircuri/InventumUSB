@@ -1,0 +1,30 @@
+image: alpine:latest
+
+variables:
+  GIT_SUBMODULE_STRATEGY: recursive
+
+stages:
+  - build
+  - deploy
+
+build:
+  stage: build
+  artifacts:
+    expire_in: 1 hour
+    paths:
+      - out/*.tar.gz
+  script:
+  - /bin/sh ci/build.sh
+  only:
+    refs:
+      - master
+
+deploy_production:
+  stage: deploy
+  dependencies:
+    - build
+  script:
+  - /bin/sh ci/deploy.sh
+  only:
+    refs:
+      - master

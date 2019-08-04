@@ -34,7 +34,7 @@ sudo python -m pip install pySerial enum configparser paho-mqtt
 
 ## Config
 
-Create file _/etc/inventum.conf_:
+Create file _/etc/inventumusb.conf_:
 
 ```
 [inventum]
@@ -82,12 +82,12 @@ It also respond to commands send on MQTT channel:
 * '**ventilation** / **inventum** / **commands**'
 
 Supported commands are:
-* **FAN_HIGH**: Change the ventilation to mode MAX
-* **FAN_AUTO**: Revert the ventilation to the AUTO mode
-* **DATA_START** (default): Start the Data Logger function of the Inventum device. This is the default command that gets executed
+* **FAN=1**: Change the ventilation to mode MAX
+* **FAN=0**: Revert the ventilation to the AUTO mode
+* **DATA=1** (default): Start the Data Logger function of the Inventum device. This is the default command that gets executed
 upon application start
-* **DATA_STOP**: Stops the Data Logger function (does not do much, as the application reverts to the default command)
-* **KILL**: Stops the application
+* **DATA=0**: Stops the Data Logger function (does not do much, as the application reverts to the default command)
+* **QUIT**: Stops the application
 
 ## Systemd
 

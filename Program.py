@@ -51,15 +51,15 @@ class InventumProcessor(object):
         payload = str(message.payload.decode("utf-8"))
         self.mainlogger.info('Received command: %s', payload)
 
-        if payload == 'FAN_HIGH':
+        if payload == 'FAN=1':
             self.inventum.set_command_fan_high()
-        elif payload == 'FAN_AUTO':
+        elif payload == 'FAN=0':
             self.inventum.set_command_fan_auto()
-        elif payload == 'DATA_START':
+        elif payload == 'DATA=1':
             self.inventum.set_command_data_start()
-        elif payload == 'DATA_STOP':
+        elif payload == 'DATA=0':
             self.inventum.set_command_data_stop()
-        elif payload == 'KILL':
+        elif payload == 'QUIT':
             self.inventum.interrupt()
         else:
             self.mainlogger.error('Unknown command received: %s', payload)
