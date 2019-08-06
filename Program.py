@@ -76,6 +76,7 @@ class InventumProcessor(object):
         loglevel = config.get("inventum", "loglevel", fallback="INFO")
         logfile = config.get("inventum", "logfile", fallback="/var/log/inventum.log")
         device = config.get("inventum", "device", fallback="/dev/ttyACM0")
+        reset_after = config.getint("inventum", "reset", fallback=20)
 
         numeric_level = getattr(logging, loglevel.upper(), None)
         if not isinstance(numeric_level, int):
@@ -98,7 +99,7 @@ class InventumProcessor(object):
             logging.error("%s:%s: %s", mqttserver, mqttport, e)
             return 3
 
-        self.inventum = Inventum.Inventum(logging, device)
+        self.inventum = Inventum.Inventum(logging, device, reset_after)
         self.inventum.on_data = self.on_data
         self.inventum.start()
 
