@@ -40,6 +40,8 @@ Create file _/etc/inventumusb.conf_:
 [inventum]
 #loglevel = INFO
 #logfile = /var/log/inventum.log
+#device = /dev/ttyACM0
+#reset = 20
 
 [mqtt]
 #server = localhost

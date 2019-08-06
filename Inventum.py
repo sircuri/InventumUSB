@@ -31,7 +31,7 @@ class Inventum:
     LOGIN_CODE = '3845'  # Seems to be working for most Inventum Ecolution devices
     PIN_CODE = '19'
 
-    def __init__(self, logger, device):
+    def __init__(self, logger, device, reset_after):
         self.log = logger
         self.termser = Serial.TermSerial(device)
         self.datalogger_start = 0
@@ -41,9 +41,13 @@ class Inventum:
         self.datalogger_header = []
         self.datalogger_buffer = []
         self.last_line_debug = ''
+        self.reset_timeout = reset_after
 
         self._current_state = self.STATE_IDLE
         self.target_state = self.STATE_DATALOGGER
+
+        self.last_command = self.millis()
+        self.current_status = 0
 
         self._on_data = None
 
@@ -70,21 +74,28 @@ class Inventum:
     def on_data(self, func):
         self._on_data = func
 
-
     def interrupt(self):
         self.termser.interrupt()
 
     def set_command_fan_high(self):
-        self.set_target_state(self.STATE_CMD_FAN_HIGH)
+        self.last_command = self.millis()
+        if self.current_status != 3:
+            self.set_target_state(self.STATE_CMD_FAN_HIGH)
 
     def set_command_fan_auto(self):
-        self.set_target_state(self.STATE_CMD_FAN_RESET)
+        self.last_command = self.millis()
+        if self.current_status == 3:
+            self.set_target_state(self.STATE_CMD_FAN_RESET)
 
     def set_command_data_start(self):
         self.set_target_state(self.STATE_DATALOGGER)
 
     def set_command_data_stop(self):
         self.set_target_state(self.STATE_EXTRA_MENU)
+
+    def __handle_on_data(self, log_entries):
+        if '3-standen' in log_entries:
+            self.current_status = log_entries['3-standen']['value']
 
     def __workflow_enter_login_code(self):
         self.log.info('LOGIN: Entered %s', self.LOGIN_CODE)
@@ -198,11 +209,18 @@ class Inventum:
         self.termser.key_escape()
         self._current_state = self.STATE_IDLE
 
+    def __check_current_status(self):
+        if self.current_status == 3 and self.millis() - self.last_command >= (self.reset_timeout * 60 * 1000):
+            self.last_command = self.millis()
+            self.set_target_state(self.STATE_CMD_FAN_RESET)
+
     def set_target_state(self, state):
         self.target_state = state
         self.last_seen = self.millis()
 
     def handle_workflow(self):
+
+        self.__check_current_status()
 
         if self._current_state == self.STATE_LOGIN:
             self.__workflow_enter_login_code()
