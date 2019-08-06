@@ -121,6 +121,14 @@ StandardError=journal
 [Install]
 WantedBy=multi-user.target
 ```
+
+To allow the system user to interact with the ttyACM0 device, add the following to a file _/etc/udev/rules.d/inventum.rules_
+
+```bash
+KERNEL=="ttyACM[0-9]*",ATTRS{idVendor}=="0d59",ATTRS{idProduct}=="0007",MODE="0660",GROUP="inventum",SYMLINK+="inventum"
+```
+Where idVendor and idProduct correspond to the above mentioned values of the Inventum Ecolution device. Restart the Raspberry or reload the udev config manually.
+
 The program can now as usual be started by:
  
 ```bash
