@@ -47,6 +47,7 @@ class Inventum:
         self.target_state = self.STATE_DATALOGGER
 
         self.last_command = self.millis()
+        self.last_datalogger_entry = self.millis()
         self.current_status = 0
 
         self._on_data = None
@@ -94,16 +95,20 @@ class Inventum:
         self.set_target_state(self.STATE_EXTRA_MENU)
 
     def __handle_on_data(self, log_entries):
+        self.last_datalogger_entry = self.millis()
         if '3-standen' in log_entries:
             self.current_status = log_entries['3-standen']['value']
 
+        if self.on_data:
+            self.on_data(log_entries)
+
     def __workflow_enter_login_code(self):
-        self.log.info('LOGIN: Entered %s', self.LOGIN_CODE)
+        self.log.debug('LOGIN: Entered %s', self.LOGIN_CODE)
         self.termser.writeln(self.LOGIN_CODE)
         self._current_state = self.STATE_LOGIN_CODE_ENTERED
 
     def __workflow_enter_pincode(self):
-        self.log.info('LOGIN: Entered pincode %s', self.PIN_CODE)
+        self.log.debug('LOGIN: Entered pincode %s', self.PIN_CODE)
         self.termser.writeln(self.PIN_CODE)
         self._current_state = self.STATE_CHALLENGE_ENTERED
 
@@ -119,6 +124,8 @@ class Inventum:
         self.datalogger_header = None
         self.datalogger_buffer = []
         self.datalogger_start = self.millis()
+        self.last_datalogger_entry = self.millis()
+        self.log.info('Entering datalogger sequence')
 
     def __workflow_io_select_fan(self):
         selected_row = self.termser.selected_row().strip()
@@ -177,7 +184,7 @@ class Inventum:
                                      .replace(' ', '_')
                                      .replace('.', ''), data[0:header].split(','))
                 self.datalogger_header = zip(hdr[0::2], hdr[1::2])
-                self.log.debug('HEADER[%s]', str(self.datalogger_header))
+                # self.log.debug('HEADER[%s]', str(self.datalogger_header))
                 data = data[header+1:]
                 self.datalogger_buffer = list(data)
 
@@ -193,9 +200,8 @@ class Inventum:
                         "status": entries[(i*2)]
                     }
 
-                self.log.debug('DATA[%s]', str(log_entries))
-                if self.on_data:
-                    self.on_data(log_entries)
+                # self.log.debug('DATA[%s]', str(log_entries))
+                self.__handle_on_data(log_entries)
 
     def __workflow_exit_datalogger(self):
         self.termser.set_normal_mode()
@@ -210,9 +216,13 @@ class Inventum:
         self._current_state = self.STATE_IDLE
 
     def __check_current_status(self):
-        if self.current_status == 3 and self.millis() - self.last_command >= (self.reset_timeout * 60 * 1000):
-            self.last_command = self.millis()
-            self.set_target_state(self.STATE_CMD_FAN_RESET)
+        if self._current_state == self.STATE_DATALOGGER:
+            if self.millis() - self.last_datalogger_entry >= (5 * 60 * 1000):
+                self.__workflow_exit_datalogger()
+
+            elif self.current_status == 3 and self.millis() - self.last_command >= (self.reset_timeout * 60 * 1000):
+                self.last_command = self.millis()
+                self.set_target_state(self.STATE_CMD_FAN_RESET)
 
     def set_target_state(self, state):
         self.target_state = state
@@ -254,6 +264,8 @@ class Inventum:
         self.termser.key_escape()
         self.termser.key_escape()
 
+        self.log.info('Starting up TERM interface on Inventum Ecolution. Waiting for login...')
+
         while self.termser.running():
 
             time.sleep(0.1)
@@ -274,16 +286,15 @@ class Inventum:
                 elif self.termser.get_row(2).find(" EXTRAMENU") != -1 and self._current_state != self.STATE_EXTRA_MENU:
                     self._current_state = self.STATE_EXTRA_MENU
                     self.last_seen = self.millis()
-                    self.log.info('Login succesfull')
-                    self.log.debug('target state %d', self.target_state)
+                    self.log.info('Login successful')
 
                 elif self.termser.get_row(1).find("IO status") != -1 and self._current_state != self.STATE_IO_STATUS:
                     self._current_state = self.STATE_IO_STATUS
-                    self.log.info('Activated IO Status menu')
+                    self.log.debug('Activated IO Status menu')
 
                 elif self.termser.get_row(51).find('   3-standen :') != -1:
                     self._current_state = self.STATE_IO_CHANGE_FAN
-                    self.log.info('Selected "3-standen" menu item for change')
+                    self.log.debug('Selected "3-standen" menu item for change')
 
                 # wait 5 seconds, and reset to main menu
                 elif self._current_state >= self.STATE_EXTRA_MENU and self.millis() - self.last_seen > 5000:
