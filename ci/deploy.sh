@@ -44,4 +44,4 @@ ssh -o StrictHostKeyChecking=no pi@$TARGET_IP "mkdir -p ~/.deploy/${VERSION}"
 scp $package pi@$TARGET_IP:~/.deploy/${VERSION}/${IMAGE}.tar.gz
 scp etc/inventumusb.conf.replaced pi@$TARGET_IP:~/.deploy/${VERSION}/inventumusb.conf.replaced
 
-ssh pi@$TARGET_IP "cd ~/.deploy/${VERSION} && tar -xvzf InventumUSB.tar.gz && rm InventumUSB.tar.gz && /bin/sh ./deploy/stop-services.sh && /bin/sh ./deploy/install-dependencies.sh && /bin/sh ./deploy/setup-application.sh && /bin/sh ./deploy/setup-restartd.sh"
+ssh pi@$TARGET_IP "cd ~/.deploy/${VERSION} && tar -xvzf InventumUSB.tar.gz && rm InventumUSB.tar.gz && /bin/sh ./deploy/stop-services.sh && /bin/sh ./deploy/install-dependencies.sh && /bin/sh ./deploy/setup-application.sh && /bin/sh ./deploy/setup-systemctl.sh"
