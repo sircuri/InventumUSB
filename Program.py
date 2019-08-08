@@ -4,8 +4,6 @@ from daemonpy.daemon import Daemon
 import Inventum as Inventum
 import logging
 import configparser
-import os
-import gzip
 import sys
 import json
 import paho.mqtt.client as mqtt
@@ -16,18 +14,6 @@ class InventumProcessor(object):
         self.client = None
         self.inventum = None
         self.mqtttopic = ''
-
-    @staticmethod
-    def logging_namer(name):
-        return name + ".gz"
-
-    @staticmethod
-    def logging_rotator(source, dest):
-        with open(source, "rb") as sf:
-            data = sf.read()
-            with gzip.open(dest, "wb") as df:
-                df.write(data)
-        os.remove(source)
 
     def logging_setup(self, level, log_file, foreground):
 

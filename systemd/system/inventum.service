@@ -1,0 +1,15 @@
+[Unit]
+Description=Inventum USB Controller
+After=basic.target
+
+[Service]
+Type=simple
+User=inventum
+Group=inventum
+ExecStart=/opt/inventumusb/Program.py foreground
+Restart=always
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
