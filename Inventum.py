@@ -97,7 +97,7 @@ class Inventum:
     def __handle_on_data(self, log_entries):
         self.last_datalogger_entry = self.millis()
         if '3-standen' in log_entries:
-            self.current_status = log_entries['3-standen']['value']
+            self.current_status = int(log_entries['3-standen']['value'])
 
         if self.on_data:
             self.on_data(log_entries)
